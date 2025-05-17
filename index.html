@@ -67,6 +67,8 @@
         const channel = urlParams.get('channel');
         const stats_count = parseInt(urlParams.get('stats_count')||'3');
         const debugMode = urlParams.get('debug') === 'true';
+
+        let lastTimeGlobal=new Date();
         
         // Показываем debug-лог если нужно
         if (debugMode) {
@@ -157,7 +159,7 @@
             let stats = messageStats.get(msg);
             
             if (!stats) {
-                stats = { count: 0, users: new Set(), lastTime: now };
+                stats = { count: 0, users: new Set() /*, lastTime: now*/ };
                 messageStats.set(msg, stats);
                 logDebug(`Новое сообщение для отслеживания: ${msg}`);
             }
@@ -165,7 +167,7 @@
             if (!stats.users.has(user)) {
                 stats.users.add(user);
                 stats.count++;
-                stats.lastTime = now;
+                lastTimeGlobal = now;
                 logDebug(`Новый голос за "${msg}" от ${user} (всего: ${stats.count})`);
                 
                 if (stats.count >= stats_count) {
@@ -204,7 +206,7 @@
             
             activeCounters.forEach((_, msg) => {
                 const stats = messageStats.get(msg);
-                if (now - stats.lastTime > 30000) {
+                if (now - lastTimeGlobal > 60000) {
                     activeCounters.delete(msg);
                     changed = true;
                     logDebug(`Счетчик "${msg}" скрыт (неактивен)`);

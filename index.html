@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Twitch Short Messages Counter</title>
+    <style>
+        body {
+            background-color: rgba(0, 0, 0, 0.7);
+            margin: 0;
+            padding: 10px;
+            font-family: 'Arial', sans-serif;
+            color: white;
+        }
+        #counters {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .counter {
+            display: flex;
+            justify-content: space-between;
+            background: rgba(40, 40, 40, 0.9);
+            padding: 8px 12px;
+            border-radius: 4px;
+            animation: fadeIn 0.3s;
+        }
+        .message {
+            font-weight: bold;
+        }
+        .count {
+            color: #00ff88;
+            font-weight: bold;
+        }
+        #debug-log {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 200px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            border-top: 1px solid #333;
+            display: none;
+        }
+        #error-message {
+            color: #ff5555;
+            font-size: 18px;
+            text-align: center;
+            margin-top: 50px;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="error-message"></div>
+    <div id="counters"></div>
+    <div id="debug-log"></div>
+
+    <script>
+        // Параметры из URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const channel = urlParams.get('channel');
+        const debugMode = urlParams.get('debug') === 'true';
+        
+        // Показываем debug-лог если нужно
+        if (debugMode) {
+            document.getElementById('debug-log').style.display = 'block';
+        }
+        
+        // Проверяем наличие канала
+        if (!channel) {
+            document.getElementById('error-message').innerHTML = 
+                'Пожалуйста, укажите канал в параметрах URL: <br>' + 
+                window.location.origin + window.location.pathname + '?channel=ВАШ_КАНАЛ';
+            throw new Error('Channel parameter is required');
+        }
+        
+        // Данные для подключения к Twitch
+        const server = 'wss://irc-ws.chat.twitch.tv:443';
+        const nick = 'justinfan' + Math.floor(Math.random() * 100000);
+        
+        // Хранение статистики
+        const messageStats = new Map();
+        const activeCounters = new Map();
+        
+        // DOM элементы
+        const countersEl = document.getElementById('counters');
+        const debugLogEl = document.getElementById('debug-log');
+        
+        // Функция для debug-лога
+        function logDebug(message) {
+            if (!debugMode) return;
+            const now = new Date().toISOString().substr(11, 8);
+            debugLogEl.innerHTML += `[${now}] ${message}<br>`;
+            debugLogEl.scrollTop = debugLogEl.scrollHeight;
+        }
+        
+        // Подключение к Twitch
+        logDebug(`Подключаемся к каналу: ${channel}`);
+        const socket = new WebSocket(server);
+        
+        socket.onopen = () => {
+            logDebug('Connected to Twitch IRC');
+            socket.send(`CAP REQ :twitch.tv/tags twitch.tv/commands`);
+            socket.send(`PASS SCHMOOPIIE`);
+            socket.send(`NICK ${nick}`);
+            socket.send(`JOIN #${channel.toLowerCase()}`);
+        };
+        
+        socket.onerror = (error) => {
+            logDebug(`Ошибка подключения: ${error.message}`);
+        };
+        
+        socket.onclose = () => {
+            logDebug('Соединение закрыто');
+        };
+        
+        socket.onmessage = (event) => {
+            const message = event.data.trim();
+            logDebug(`Получено: ${message}`);
+            
+            if (message.startsWith('PING')) {
+                socket.send('PONG :tmi.twitch.tv');
+                return;
+            }
+            
+            // Исправленный парсинг сообщения
+            const msgParts = message.split(' ');
+            if (msgParts.length < 4) return;
+            
+            const tagsPart = msgParts[0];
+            const user = tagsPart.includes('display-name=') 
+                ? tagsPart.split('display-name=')[1].split(';')[0]
+                : msgParts[1].split('!')[0].substr(1);
+            
+            const msgText = message.split(' :').slice(1).join(' :').trim();
+            const msg = msgText.toLowerCase();
+            
+            // Фильтрация сообщений
+            if (msg.length >= 4 || msg.startsWith('!')) {
+                logDebug(`Пропускаем сообщение: ${msg} (фильтрация)`);
+                return;
+            }
+            
+            // Обновляем статистику
+            const now = new Date();
+            let stats = messageStats.get(msg);
+            
+            if (!stats) {
+                stats = { count: 0, users: new Set(), lastTime: now };
+                messageStats.set(msg, stats);
+                logDebug(`Новое сообщение для отслеживания: ${msg}`);
+            }
+            
+            if (!stats.users.has(user)) {
+                stats.users.add(user);
+                stats.count++;
+                stats.lastTime = now;
+                logDebug(`Новый голос за "${msg}" от ${user} (всего: ${stats.count})`);
+                
+                if (stats.count >= 3) {
+                    activeCounters.set(msg, stats.count);
+                    updateCounters();
+                    logDebug(`Активирован счетчик для "${msg}"`);
+                }
+            } else if (activeCounters.has(msg)) {
+                activeCounters.set(msg, stats.count);
+                updateCounters();
+                logDebug(`Обновлен счетчик для "${msg}"`);
+            }
+        };
+        
+        // Обновление интерфейса
+        function updateCounters() {
+            countersEl.innerHTML = '';
+            
+            activeCounters.forEach((count, msg) => {
+                const counterEl = document.createElement('div');
+                counterEl.className = 'counter';
+                counterEl.innerHTML = `
+                    <span class="message">${msg}</span>
+                    <span class="count">${count} votes</span>
+                `;
+                countersEl.appendChild(counterEl);
+            });
+            
+            logDebug(`Обновление интерфейса (${activeCounters.size} активных счетчиков)`);
+        }
+        
+        // Очистка неактивных счетчиков
+        setInterval(() => {
+            const now = new Date();
+            let changed = false;
+            
+            activeCounters.forEach((_, msg) => {
+                const stats = messageStats.get(msg);
+                if (now - stats.lastTime > 30000) {
+                    activeCounters.delete(msg);
+                    changed = true;
+                    logDebug(`Счетчик "${msg}" скрыт (неактивен)`);
+                }
+            });
+            
+            if (changed) updateCounters();
+        }, 5000);
+    </script>
+</body>
+</html>

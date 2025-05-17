@@ -21,7 +21,7 @@
             background: rgba(40, 40, 40, 0.9);
             padding: 8px 12px;
             border-radius: 4px;
-            animation: fadeIn 0.3s;
+            animation: fadeIn 0.5s;
         }
         .message {
             font-weight: bold;
@@ -51,14 +51,14 @@
             margin-top: 50px;
         }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
+            from { opacity: 0; transform: translateY(15px); }
             to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
 <body>
-    <div id="error-message"></div>
     <div id="counters"></div>
+    <div id="error-message"></div>
     <div id="debug-log"></div>
 
     <script>

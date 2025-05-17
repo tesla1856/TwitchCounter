@@ -123,7 +123,7 @@
         
         socket.onmessage = (event) => {
             const message = event.data.trim();
-            logDebug(`Получено: ${message}`);
+            //logDebug(`Получено: ${message}`);
             
             if (message.startsWith('PING')) {
                 socket.send('PONG :tmi.twitch.tv');
@@ -139,12 +139,12 @@
                 ? tagsPart.split('display-name=')[1].split(';')[0]
                 : msgParts[1].split('!')[0].substr(1);
             
-            const msgText = message.split(' :').slice(1).join(' :').trim();
+            const msgText = message.split('PRIVMSG')[1].split(' :').slice(1).join(' :').trim();
             const msg = msgText.toLowerCase();
             
             // Фильтрация сообщений
             if (msg.length >= 4 || msg.startsWith('!')) {
-                logDebug(`Пропускаем сообщение: ${msg} (фильтрация)`);
+                logDebug(`Пропускаем сообщение: ${user}: ${msg} (фильтрация)`);
                 return;
             }
             

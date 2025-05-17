@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Twitch Short Messages Counter</title>
+    <title>Twitch Counter</title>
     <style>
         body {
             background-color: rgba(0, 0, 0, 0.7);
@@ -65,6 +65,7 @@
         // Параметры из URL
         const urlParams = new URLSearchParams(window.location.search);
         const channel = urlParams.get('channel');
+        const stats_count = parseInt(urlParams.get('stats_count')||'3');
         const debugMode = urlParams.get('debug') === 'true';
         
         // Показываем debug-лог если нужно
@@ -163,7 +164,7 @@
                 stats.lastTime = now;
                 logDebug(`Новый голос за "${msg}" от ${user} (всего: ${stats.count})`);
                 
-                if (stats.count >= 3) {
+                if (stats.count >= stats_count) {
                     activeCounters.set(msg, stats.count);
                     updateCounters();
                     logDebug(`Активирован счетчик для "${msg}"`);

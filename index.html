@@ -129,7 +129,11 @@
                 socket.send('PONG :tmi.twitch.tv');
                 return;
             }
-            
+
+            if (message.indexOf('PRIVMSG')<0) {
+                return;
+            }
+
             // Исправленный парсинг сообщения
             const msgParts = message.split(' ');
             if (msgParts.length < 4) return;

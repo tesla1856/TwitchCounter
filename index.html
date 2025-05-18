@@ -22,9 +22,9 @@
             border: 1px solid white;
             padding: 8px 12px;
             border-radius: 8px;
-            transition: transform 1s ease;
+            transition: all 0.5s ease;
         }
-        .counter.zoom {
+        .counter.changed {
             border: 1px solid #00ff88;
             background: rgba(0, 80, 40, 0.9);
         }
@@ -183,7 +183,7 @@
                 
                 if (msg === changedMessage) {
                     counter.classList.add('zoom');
-                    setTimeout(() => counter.classList.remove('zoom'), 300);
+                    setTimeout(() => counter.classList.remove('changed'), 500);
                 }
             });
         }

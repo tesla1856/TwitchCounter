@@ -21,7 +21,10 @@
             background: rgba(40, 40, 40, 0.9);
             padding: 8px 12px;
             border-radius: 4px;
-            //animation: fadeIn 0.5s;
+            transition: transform 0.3s ease;
+        }
+        .counter.zoom {
+            transform: scale(1.1);
         }
         .message {
             font-weight: bold;
@@ -50,10 +53,6 @@
             text-align: center;
             margin-top: 50px;
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(15px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
     </style>
 </head>
 <body>
@@ -62,158 +61,134 @@
     <div id="debug-log"></div>
 
     <script>
-        // Параметры из URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const channel = urlParams.get('channel');
-        const stats_count = parseInt(urlParams.get('stats_count')||'3');
-        const debugMode = urlParams.get('debug') === 'true';
+        // Конфигурация
+        const config = {
+            channel: new URLSearchParams(window.location.search).get('channel'),
+            statsCount: parseInt(new URLSearchParams(window.location.search).get('stats_count') || '3'),
+            minLenght: parseInt(new URLSearchParams(window.location.search).get('min_lenght') || '3'),
+            resetTimeout: parseInt(new URLSearchParams(window.location.search).get('reset_timeout') || '60') * 1000,
+            debugMode: new URLSearchParams(window.location.search).get('debug') === 'true',
+            server: 'wss://irc-ws.chat.twitch.tv:443',
+            nick: 'justinfan' + Math.floor(Math.random() * 100000)
+        };
 
-        let lastTimeGlobal=new Date();
-        
-        // Показываем debug-лог если нужно
-        if (debugMode) {
-            document.getElementById('debug-log').style.display = 'block';
-        }
-        
-        // Проверяем наличие канала
-        if (!channel) {
-            document.getElementById('error-message').innerHTML = 
-                'Пожалуйста, укажите канал в параметрах URL: <br>' + 
-                window.location.origin + window.location.pathname + '?channel=ВАШ_КАНАЛ';
+        // Состояние приложения
+        const state = {
+            messageStats: new Map(),
+            activeCounters: new Map(),
+            lastActivity: new Date(),
+            elements: {
+                counters: document.getElementById('counters'),
+                error: document.getElementById('error-message'),
+                debug: document.getElementById('debug-log')
+            }
+        };
+
+        // Инициализация
+        if (config.debugMode) state.elements.debug.style.display = 'block';
+        if (!config.channel) showError();
+
+        // Подключение к Twitch
+        const socket = new WebSocket(config.server);
+        setupSocketEvents();
+
+        // Функции
+        function showError() {
+            state.elements.error.innerHTML = 
+                `Пожалуйста, укажите канал в параметрах URL: <br>${location.origin}${location.pathname}?channel=ВАШ_КАНАЛ`;
             throw new Error('Channel parameter is required');
         }
-        
-        // Данные для подключения к Twitch
-        const server = 'wss://irc-ws.chat.twitch.tv:443';
-        const nick = 'justinfan' + Math.floor(Math.random() * 100000);
-        
-        // Хранение статистики
-        const messageStats = new Map();
-        const activeCounters = new Map();
-        
-        // DOM элементы
-        const countersEl = document.getElementById('counters');
-        const debugLogEl = document.getElementById('debug-log');
-        
-        // Функция для debug-лога
+
         function logDebug(message) {
-            if (!debugMode) return;
+            if (!config.debugMode) return;
             const now = new Date().toISOString().substr(11, 8);
-            debugLogEl.innerHTML += `[${now}] ${message}<br>`;
-            debugLogEl.scrollTop = debugLogEl.scrollHeight;
+            state.elements.debug.innerHTML += `[${now}] ${message}<br>`;
+            state.elements.debug.scrollTop = state.elements.debug.scrollHeight;
         }
-        
-        // Подключение к Twitch
-        logDebug(`Подключаемся к каналу: ${channel}`);
-        const socket = new WebSocket(server);
-        
-        socket.onopen = () => {
-            logDebug('Connected to Twitch IRC');
-            socket.send(`CAP REQ :twitch.tv/tags twitch.tv/commands`);
-            socket.send(`PASS SCHMOOPIIE`);
-            socket.send(`NICK ${nick}`);
-            socket.send(`JOIN #${channel.toLowerCase()}`);
-        };
-        
-        socket.onerror = (error) => {
-            logDebug(`Ошибка подключения: ${error.message}`);
-        };
-        
-        socket.onclose = () => {
-            logDebug('Соединение закрыто');
-        };
-        
-        socket.onmessage = (event) => {
-            const message = event.data.trim();
-            //logDebug(`Получено: ${message}`);
-            
-            if (message.startsWith('PING')) {
-                socket.send('PONG :tmi.twitch.tv');
-                return;
-            }
 
-            if (message.indexOf('PRIVMSG')<0) {
-                return;
-            }
+        function setupSocketEvents() {
+            socket.onopen = () => {
+                logDebug(`Connected to ${config.channel}`);
+                socket.send(`CAP REQ :twitch.tv/tags twitch.tv/commands`);
+                socket.send(`PASS SCHMOOPIIE`);
+                socket.send(`NICK ${config.nick}`);
+                socket.send(`JOIN #${config.channel.toLowerCase()}`);
+            };
 
-            // Исправленный парсинг сообщения
-            const msgParts = message.split(' ');
-            if (msgParts.length < 4) return;
-            
-            const tagsPart = msgParts[0];
-            const user = tagsPart.includes('display-name=') 
-                ? tagsPart.split('display-name=')[1].split(';')[0]
-                : msgParts[1].split('!')[0].substr(1);
-            
-            const msgText = message.split('PRIVMSG')[1].split(' :').slice(1).join(' :').trim();
-            const msg = msgText.toLowerCase();
-            
-            // Фильтрация сообщений
-            if (msg.length >= 4 || msg.startsWith('!')) {
-                logDebug(`Пропускаем сообщение: ${user}: ${msg} (фильтрация)`);
-                return;
-            }
-            
-            // Обновляем статистику
-            const now = new Date();
-            let stats = messageStats.get(msg);
-            
-            if (!stats) {
-                stats = { count: 0, users: new Set() /*, lastTime: now*/ };
-                messageStats.set(msg, stats);
-                logDebug(`Новое сообщение для отслеживания: ${msg}`);
-            }
+            socket.onerror = (error) => logDebug(`Ошибка: ${error.message}`);
+            socket.onclose = () => logDebug('Соединение закрыто');
+
+            socket.onmessage = (event) => {
+                const message = event.data.trim();
+                if (message.startsWith('PING')) return socket.send('PONG :tmi.twitch.tv');
+                if (!message.includes('PRIVMSG')) return;
+                
+                processMessage(message);
+            };
+        }
+
+        function processMessage(message) {
+            const [tags, user, msg] = parseMessage(message);
+            if (msg.length > minLenght || msg.startsWith('!')) return;
+
+            updateCounter(msg, user);
+        }
+
+        function parseMessage(message) {
+            const tags = message.split(' ')[0];
+            const user = tags.includes('display-name=') 
+                ? tags.split('display-name=')[1].split(';')[0]
+                : message.split('!')[0].slice(1);
+            const msg = message.split('PRIVMSG')[1].split(' :')[1].toLowerCase().trim();
+            return [tags, user, msg];
+        }
+
+        function updateCounter(msg, user) {
+            state.lastActivity = new Date();
+            const stats = state.messageStats.get(msg) || { count: 0, users: new Set() };
             
             if (!stats.users.has(user)) {
                 stats.users.add(user);
                 stats.count++;
-                lastTimeGlobal = now;
-                logDebug(`Новый голос за "${msg}" от ${user} (всего: ${stats.count})`);
-                
-                if (stats.count >= stats_count) {
-                    activeCounters.set(msg, stats.count);
-                    updateCounters();
-                    logDebug(`Активирован счетчик для "${msg}"`);
+                state.messageStats.set(msg, stats);
+                logDebug(`Голос за "${msg}" от ${user} (${stats.count})`);
+
+                if (stats.count >= config.statsCount) {
+                    state.activeCounters.set(msg, stats.count);
+                    renderCounters(msg);
                 }
-            } else if (activeCounters.has(msg)) {
-                activeCounters.set(msg, stats.count);
-                updateCounters();
-                logDebug(`Обновлен счетчик для "${msg}"`);
+            } else if (state.activeCounters.get(msg) !== stats.count) {
+                state.activeCounters.set(msg, stats.count);
+                renderCounters(msg);
             }
-        };
-        
-        // Обновление интерфейса
-        function updateCounters() {
-            countersEl.innerHTML = '';
+        }
+
+        function renderCounters(changedMessage = null) {
+            state.elements.counters.innerHTML = '';
             
-            activeCounters.forEach((count, msg) => {
-                const counterEl = document.createElement('div');
-                counterEl.className = 'counter';
-                counterEl.innerHTML = `
+            state.activeCounters.forEach((count, msg) => {
+                const counter = document.createElement('div');
+                counter.className = 'counter';
+                counter.innerHTML = `
                     <span class="message">${msg}</span>
                     <span class="count">${count} votes</span>
                 `;
-                countersEl.appendChild(counterEl);
-            });
-            
-            logDebug(`Обновление интерфейса (${activeCounters.size} активных счетчиков)`);
-        }
-        
-        // Очистка неактивных счетчиков
-        setInterval(() => {
-            const now = new Date();
-            let changed = false;
-            
-            activeCounters.forEach((_, msg) => {
-                const stats = messageStats.get(msg);
-                if (now - lastTimeGlobal > 60000) {
-                    activeCounters.delete(msg);
-                    changed = true;
-                    logDebug(`Счетчик "${msg}" скрыт (неактивен)`);
+                state.elements.counters.appendChild(counter);
+                
+                if (msg === changedMessage) {
+                    counter.classList.add('zoom');
+                    setTimeout(() => counter.classList.remove('zoom'), 300);
                 }
             });
-            
-            if (changed) updateCounters();
+        }
+
+        // Очистка неактивных счетчиков
+        setInterval(() => {
+            if (new Date() - state.lastActivity > resetTimeout && state.activeCounters.size) {
+                state.activeCounters.clear();
+                renderCounters();
+                logDebug('Счетчики сброшены по таймауту');
+            }
         }, 5000);
     </script>
 </body>

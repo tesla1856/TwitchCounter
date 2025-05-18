@@ -129,7 +129,7 @@
 
         function processMessage(message) {
             const [tags, user, msg] = parseMessage(message);
-            if (msg.length > maxLenght || msg.startsWith('!')) return;
+            if (msg.length > config.maxLenght || msg.startsWith('!')) return;
 
             updateCounter(msg, user);
         }
@@ -184,7 +184,7 @@
 
         // Очистка неактивных счетчиков
         setInterval(() => {
-            if (new Date() - state.lastActivity > resetTimeout && state.activeCounters.size) {
+            if (new Date() - state.lastActivity > config.resetTimeout && state.activeCounters.size) {
                 state.activeCounters.clear();
                 renderCounters();
                 logDebug('Счетчики сброшены по таймауту');

@@ -188,6 +188,7 @@
         setInterval(() => {
             if (new Date() - state.lastActivity > config.resetTimeout && state.activeCounters.size) {
                 state.activeCounters.clear();
+                state.messageStats.clear();
                 renderCounters();
                 logDebug('Счетчики сброшены по таймауту');
             }

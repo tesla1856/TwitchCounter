@@ -65,7 +65,7 @@
         const config = {
             channel: new URLSearchParams(window.location.search).get('channel'),
             statsCount: parseInt(new URLSearchParams(window.location.search).get('stats_count') || '3'),
-            minLenght: parseInt(new URLSearchParams(window.location.search).get('min_lenght') || '3'),
+            maxLenght: parseInt(new URLSearchParams(window.location.search).get('max_lenght') || '3'),
             resetTimeout: parseInt(new URLSearchParams(window.location.search).get('reset_timeout') || '60') * 1000,
             debugMode: new URLSearchParams(window.location.search).get('debug') === 'true',
             server: 'wss://irc-ws.chat.twitch.tv:443',
@@ -129,7 +129,7 @@
 
         function processMessage(message) {
             const [tags, user, msg] = parseMessage(message);
-            if (msg.length > minLenght || msg.startsWith('!')) return;
+            if (msg.length > maxLenght || msg.startsWith('!')) return;
 
             updateCounter(msg, user);
         }
